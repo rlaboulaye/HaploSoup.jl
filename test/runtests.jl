@@ -2,5 +2,5 @@ using PBWT
 using Test
 
 @testset "PBWT.jl" begin
-    # Write your tests here.
+    @test PBWT.foo(2) == 4
 end

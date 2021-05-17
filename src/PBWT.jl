@@ -1,5 +1,7 @@
 module PBWT
 
-# Write your package code here.
+function foo(x)
+    2*x
+end
 
 end
