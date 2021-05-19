@@ -1,6 +1,3 @@
-using InteractiveUtils
-
-
 """
     build_prefix_and_divergence_arrays(H::Array{Int8, 2})
 
