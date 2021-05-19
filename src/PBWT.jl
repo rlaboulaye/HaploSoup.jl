@@ -1,7 +1,6 @@
 module PBWT
 
-function foo(x)
-    2*x
-end
+
+export build_prefix_and_divergence_arrays
 
 end
