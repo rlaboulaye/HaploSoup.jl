@@ -8,11 +8,11 @@ function build_prefix_and_divergence_arrays(H::Array{Int8, 2})
     u = v = p = q = index = match_start = one(Int32)
     ppa_buffer = Vector{Int32}(undef, M)
     div_buffer = Vector{Int32}(undef, M)
-    ppa = Matrix{Int32}(undef, M, N)
-    div = Matrix{Int32}(undef, M, N)
+    ppa = Matrix{Int32}(undef, M, N+1)
+    div = Matrix{Int32}(undef, M, N+1)
     ppa[:, 1] = 1:1:M
     div[:, 1] = ones(Int32, M)
-    @inbounds for j in 1:N-1
+    @inbounds for j in 1:N
         u = v = 1
         p = q = j+1
         for i in 1:M
