@@ -64,10 +64,70 @@ function build_scoring_blocks(div::Array{Int32, 2})
     return block_start, block_end
 end
 
-# for j in j_start:j_end
-#     for i in i_start:i_end
-#         coverage[ppa[i, j+1], j] = 0
+function update_scores!(
+    scores::MutableBinaryMaxHeap{Int32},
+    coverage::Array{Int8, 2},
+    div::Array{Int32, 2},
+    ppa::Array{Int32, 2},
+    reverse_ppa::Array{Int32, 2},
+    block_start::Array{Int32, 2},
+    block_end::Array{Int32, 2},
+    i_range_start::Int,
+    i_range_end::Int,
+    j_range_start::Int,
+    j_range_end::Int,
+    j_selected::Int,
+    )
+    M = size(coverage, 1)
+    @inbounds for j in j_range_start:j_range_end
+        for i in i_range_start:i_range_end
+            score = zero(Int32)
+            i_adjusted = reverse_ppa[ppa[i, j_selected + 1], j+1]
+            for j_score in div[i_adjusted, j+1]:j
+                for i_score in block_start[i_adjusted, j+1]:block_end[i_adjusted, j+1]
+                    score += coverage[ppa[i_score, j+1], j_score]
+                end
+            end
+            update!(scores, (j - 1) * M + i_adjusted, score)
+        end
+    end
+    return nothing
+end
+
+# function update_scores!(
+#     scores::MutableBinaryMaxHeap{Int32},
+#     coverage::Array{Int8, 2},
+#     div::Array{Int32, 2},
+#     ppa::Array{Int32, 2},
+#     block_start::Array{Int32, 2},
+#     block_end::Array{Int32, 2},
+#     i_range_start::Int,
+#     i_range_end::Int,
+#     j_range_start::Int,
+#     j_range_end::Int
+#     )
+#     for j in j_range_start:j_range_end
+#         M = size(coverage, 1)
+#         @inbounds for i in i_range_start:i_range_end
+#             score = zero(Int32)
+#             for block_j in div[i, j+1]:j
+#                 for block_i in block_start[i, j+1]:block_end[i, j+1]
+#                     score += coverage[ppa[block_i, block_j + 1], block_j]
+#                 end
+#                 println()
+#                 println(i, " ", j)
+#                 println(score)
+#                 println(sum(coverage[ppa[block_start[i, j+1]:block_end[i, j+1], block_j+1], block_j]))
+#             end
+#             println("HERE")
+#             # println(score)
+#             # println(scores[(j - 1) * M + i])
+#             update!(scores, (j - 1) * M + i, score)
+#             # println(scores[(j - 1) * M + i])
+#             # println()
+#         end
 #     end
+#     return nothing
 # end
 
 function update_scores!(
@@ -75,41 +135,11 @@ function update_scores!(
     coverage::Array{Int8, 2},
     div::Array{Int32, 2},
     ppa::Array{Int32, 2},
-    block_start::Array{Int32, 2},
-    block_end::Array{Int32, 2},
-    i_range_start::Int,
-    i_range_end::Int,
-    j_range_start::Int,
-    j_range_end::Int
-    )
-    for j in j_range_start:j_range_end
-        M = size(coverage, 1)
-        @inbounds for i in i_range_start:i_range_end
-            score = zero(Int32)
-            for block_j in div[i, j+1]:j
-                for block_i in block_start[i, j+1]:block_end[i, j+1]
-                    score += coverage[ppa[block_i, block_j + 1], block_j]
-                end
-            end
-            println(score)
-            println(scores[(j - 1) * M + i])
-            update!(scores, (j - 1) * M + i, score)
-            println(scores[(j - 1) * M + i])
-            println()
-        end
-    end
-    return nothing
-end
-
-function update_scores!(
-    scores::MutableBinaryMaxHeap{Int32},
-    coverage::Array{Int8, 2},
-    div::Array{Int32, 2},
-    ppa::Array{Int32, 2},
+    reverse_ppa::Array{Int32, 2},
     block_start::Array{Int32, 2},
     block_end::Array{Int32, 2}
     )
-    update_scores!(scores, coverage, div, ppa, block_start, block_end, 1, size(coverage, 1), 1, size(coverage, 2))
+    update_scores!(scores, coverage, div, ppa, reverse_ppa, block_start, block_end, 1, size(coverage, 1), 1, size(coverage, 2), size(coverage, 2))
 end
 
 function build_reverse_prefix_array(ppa::Array{Int32, 2})
@@ -135,7 +165,8 @@ function find_altered_block(
     N = size(div, 2) - 1
     i_start = convert(Int, block_start[i_selected, j_selected + 1])
     i_end = convert(Int, block_end[i_selected, j_selected + 1])
-    j_start = convert(Int, minimum(div[i_start:i_end, j_selected + 1]))
+    # j_start = convert(Int, minimum(div[i_start:i_end, j_selected + 1]))
+    j_start = convert(Int, div[i_selected, j_selected + 1])
     j_end_candidates = Vector{Int}(undef, i_end - i_start + 1)
     @sync Threads.@threads for i in i_start:i_end
         original_index = ppa[i, j_selected + 1]
@@ -178,48 +209,55 @@ function update_coverage!(
     )
     @sync Threads.@threads for j in div[i_selected, j_selected + 1]:j_selected
         @inbounds for i in block_start[i_selected, j_selected + 1]:block_end[i_selected, j_selected + 1]
-            coverage[ppa[i, j+1], j] = 0
+            coverage[ppa[i, j_selected + 1], j] = 0
         end
     end
 end
 
+
 H = convert_ht(Int8, path)
-# H = H[:, 10000]
+# H = Hbig[:, 1:10000]
 ppa, div = build_prefix_and_divergence_arrays(H)
 reverse_ppa = build_reverse_prefix_array(ppa)
 block_start, block_end = build_scoring_blocks(div)
 coverage = ones(Int8, size(H)...)
 scores = MutableBinaryMaxHeap{Int32}(zeros(Int32, length(H)))
-update_scores!(scores, coverage, div, ppa, block_start, block_end)
+@time update_scores!(scores, coverage, div, ppa, reverse_ppa, block_start, block_end)
 indices = CartesianIndices(size(H))
 score, k = top_with_handle(scores)
 # while score > 0
 #     i_selected, j_selected = indices[k][1], indices[k][2]
 #     selected_segment = find_selected_segment(H, div, ppa, i_selected, j_selected)
-#     println(score)
-#     println(div[i_selected, j_selected + 1], selected_segment)
+#     println(score, " ", div[i_selected, j_selected + 1], " ", selected_segment)
 #     i_start, i_end, j_start, j_end = find_altered_block(div, ppa, reverse_ppa, block_start, block_end, i_selected, j_selected)
 #     update!(scores, k, 0)
-#     update_coverage!(coverage, div, block_start, block_end, i_selected, j_selected)
-#     update_scores!(scores, coverage, div, block_start, block_end, i_start, i_end, j_start, j_end)
+#     update_coverage!(coverage, div, ppa, block_start, block_end, i_selected, j_selected)
+#     update_scores!(scores, coverage, div, ppa, reverse_ppa, block_start, block_end, i_start, i_end, j_start, j_end, j_selected)
 #     score, k = top_with_handle(scores)
 # end
-begin
+
+@time begin
+    score, k = top_with_handle(scores)
+    #
     i_selected, j_selected = indices[k][1], indices[k][2]
     selected_segment = find_selected_segment(H, div, ppa, i_selected, j_selected)
+    # println(score, " ", div[i_selected, j_selected + 1], " ", selected_segment)
     i_start, i_end, j_start, j_end = find_altered_block(div, ppa, reverse_ppa, block_start, block_end, i_selected, j_selected)
-    # update!(scores, k, 0)
+    update!(scores, k, 0)
     update_coverage!(coverage, div, ppa, block_start, block_end, i_selected, j_selected)
-    update_scores!(scores, coverage, div, ppa, block_start, block_end, i_start, i_end, j_start, j_end)
-    score, k = top_with_handle(scores)
+    update_scores!(scores, coverage, div, ppa, reverse_ppa, block_start, block_end, i_start, i_end, j_start, j_end, j_selected)
+    # score, k = top_with_handle(scores)
+    # coverage
 end
+
+
+
+
+
 H
 i_selected, j_selected = indices[k][1], indices[k][2]
 selected_segment = find_selected_segment(H, div, ppa, i_selected, j_selected)
 i_start, i_end, j_start, j_end = find_altered_block(div, ppa, reverse_ppa, block_start, block_end, i_selected, j_selected)
-scores
-# update!(scores, k, 0)
-scores
 coverage
 update_coverage!(coverage, div, ppa, block_start, block_end, i_selected, j_selected)
 coverage
@@ -234,23 +272,49 @@ coverage[ppa[:, j+1], 1:j]
 
 
 
+scores = MutableBinaryMaxHeap{Int32}(zeros(Int32, length(H)))
 coverage = ones(Int8, size(H)...)
-i, j = indices[46][1], indices[46][2]
-i_start, i_end, j_start, j_end = find_altered_block(div, ppa, reverse_ppa, block_start, block_end, i_selected, j_selected)
-# for j in j_start:j_end
-#     for i in i_start:i_end
-#         coverage[ppa[i, j+1], j] = 0
-#     end
-# end
-update_coverage!(coverage, div, ppa, block_start, block_end, i, j)
+update_scores!(scores, coverage, div, ppa, block_start, block_end)
+i_selected, j_selected = indices[46][1], indices[46][2]
+update_coverage!(coverage, div, ppa, block_start, block_end, i_selected, j_selected)
 print("START")
-H[ppa[:, 7], 1:6]
-for j in 1:6
+H[ppa[:, j_selected + 1], 1:j_selected]
+for j in 1:j_selected
     println(coverage[ppa[:, j+1], j])
 end
+i_start, i_end, j_start, j_end = find_altered_block(div, ppa, reverse_ppa, block_start, block_end, i_selected, j_selected)
+j_selected
+###
+for j in j_start:j_end
+    for i in i_start:i_end
+        println(ppa[i, j_selected + 1])
+        println(reverse_ppa[ppa[i, j_selected + 1], j+1], " ", j)
+    end
+end
+###
+reverse_ppa[ppa[6, 7], 6]
+coverage[reverse_ppa[ppa[6, 7], 6], 5]
+H[ppa[:, 6], 1:5]
+#
+scores
+update_scores!(scores, coverage, div, ppa, block_start, block_end, i_start, i_end, j_start, j_end)
+scores
+#
+for j in j_start:j_end
+    # println(H[ppa[i_start:i_end, j+1], j])
+    println(coverage[ppa[i_start:i_end, j+1], j])
+    # coverage[ppa[i_start:i_end, j+1], j] = 0
+    # coverage[ppa[i, j+1], j] = 0
+end
 
+score = 0
+for j in div[3, 6]:5
+    println(coverage[ppa[block_start[3, 6]:block_end[3, 6], j+1], j])
+end
+coverage[:, 1:5]
 
-
+H[ppa[6, 7], 1:6]
+reverse_ppa[]
 
 
 
