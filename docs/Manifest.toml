@@ -84,7 +84,7 @@ uuid = "14a3606d-f60d-562e-9121-12d972cd8159"
 [[NetworkOptions]]
 uuid = "ca575930-c2e3-43a9-ace4-1e988b2c1908"
 
-[[PBWT]]
+[[HaploSoup]]
 path = ".."
 uuid = "7bf651b7-f892-4a16-8775-dfd0bc30e02c"
 version = "0.1.0"
