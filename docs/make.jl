@@ -1,16 +1,16 @@
-using PBWT
+using HaploSoup
 using Documenter
 
-DocMeta.setdocmeta!(PBWT, :DocTestSetup, :(using PBWT); recursive=true)
+DocMeta.setdocmeta!(HaploSoup, :DocTestSetup, :(using HaploSoup); recursive=true)
 
 makedocs(;
-    modules=[PBWT],
+    modules=[HaploSoup],
     authors="Roland Laboulaye <rlaboulaye@gmail.com> and contributors",
-    repo="https://github.com/rlaboulaye/PBWT.jl/blob/{commit}{path}#{line}",
-    sitename="PBWT.jl",
+    repo="https://github.com/rlaboulaye/HaploSoup.jl/blob/{commit}{path}#{line}",
+    sitename="HaploSoup.jl",
     format=Documenter.HTML(;
         prettyurls=get(ENV, "CI", "false") == "true",
-        canonical="https://rlaboulaye.github.io/PBWT.jl",
+        canonical="https://rlaboulaye.github.io/HaploSoup.jl",
         assets=String[],
     ),
     pages=[
@@ -19,5 +19,5 @@ makedocs(;
 )
 
 deploydocs(;
-    repo="github.com/rlaboulaye/PBWT.jl",
+    repo="github.com/rlaboulaye/HaploSoup.jl",
 )

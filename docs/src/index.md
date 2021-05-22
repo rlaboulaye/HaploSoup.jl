@@ -1,14 +1,14 @@
 ```@meta
-CurrentModule = PBWT
+CurrentModule = HaploSoup
 ```
 
-# PBWT
+# HaploSoup
 
-Documentation for [PBWT](https://github.com/rlaboulaye/PBWT.jl).
+Documentation for [HaploSoup](https://github.com/rlaboulaye/HaploSoup.jl).
 
 ```@index
 ```
 
 ```@autodocs
-Modules = [PBWT]
+Modules = [HaploSoup]
 ```

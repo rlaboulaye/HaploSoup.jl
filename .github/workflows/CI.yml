@@ -54,9 +54,9 @@ jobs:
       - run: |
           julia --project=docs -e '
             using Documenter: DocMeta, doctest
-            using PBWT
-            DocMeta.setdocmeta!(PBWT, :DocTestSetup, :(using PBWT); recursive=true)
-            doctest(PBWT)'
+            using HaploSoup
+            DocMeta.setdocmeta!(HaploSoup, :DocTestSetup, :(using HaploSoup); recursive=true)
+            doctest(HaploSoup)'
       - run: julia --project=docs docs/make.jl
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
