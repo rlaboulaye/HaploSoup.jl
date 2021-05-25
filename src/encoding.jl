@@ -51,8 +51,8 @@ end
 struct Segment{T}
     snp_start::T
     snp_end::T
-    index_start::T
-    index_end::T
+    sample_start::T
+    sample_end::T
 end
 
 function build_reverse_prefix_array(ppa::Array{Int32, 2})
@@ -71,14 +71,40 @@ function build_segments(div::Array{Int32, 2}, reverse_ppa::Array{Int32, 2})
     n_snps = size(div, 2) - 1
     segments_by_thread = [Vector{Segment{Int32}}() for t in 1:min(Threads.nthreads(), n_snps)]
     Threads.@threads for snp_index in 1:n_snps
-        index_start = one(Int32)
-        @inbounds for sample_index in 1:n_samples
+        segments = segments_by_thread[Threads.threadid()]
+        last_segment = Segment{Int32}(snp_index, snp_index, convert(Int32, n_snps + 1), convert(Int32, n_snps + 1))
+        split_index = convert(Int32, n_snps + 1)
+        @inbounds for sample_index in n_samples:-1:1
             match_start = div[sample_index, snp_index + 1]
-            if snp_index == n_snps || match_start != div[reverse_ppa[sample_index, snp_index + 1], snp_index + 2]
-                if sample_index == n_samples || match_start != div[sample_index + 1, snp_index + 1]
-                    segment = Segment{Int32}(match_start, snp_index, convert(Int32, index_start), convert(Int32, sample_index))
-                    push!(segments_by_thread[Threads.threadid()], segment)
-                    index_start = sample_index + 1
+            if last_segment.snp_start == match_start && last_segment.sample_start < sample_index < last_segment.sample_end
+                continue
+            elseif match_start == snp_index + 1
+                if length(segments) == 0
+                    segment = Segment{Int32}(snp_index, snp_index, convert(Int32, sample_index), convert(Int32, sample_index))
+                    push!(segments, segment)
+                    last_segment = segment
+                else
+                    for segment_index in length(segments):-1:1
+                        segment = segments[segment_index]
+                        if segment.sample_start < split_index && segment.snp_start == snp_index
+                            break
+                        elseif segment.sample_start >= split_index || segment_index == 1
+                            segment = Segment{Int32}(snp_index, snp_index, convert(Int32, sample_index), convert(Int32, sample_index))
+                            push!(segments, segment)
+                            last_segment = segment
+                            break
+                        end
+                    end
+                end
+                split_index = sample_index
+            elseif snp_index == n_snps || match_start != div[reverse_ppa[ppa[sample_index, snp_index + 1], snp_index + 2], snp_index + 2]
+                for sample_start in sample_index-1:-1:1
+                    if match_start < div[sample_start, snp_index + 1]
+                        segment = Segment{Int32}(match_start, snp_index, convert(Int32, sample_start), convert(Int32, sample_index))
+                        push!(segments, segment)
+                        last_segment = segment
+                        break
+                    end
                 end
             end
         end
@@ -88,12 +114,18 @@ end
 
 using BenchmarkTools
 
-H =  Array{Int8, 2}([0 1 0 1 0 1; 1 1 0 0 0 1; 1 1 1 1 1 1; 0 1 1 1 1 0; 0 0 0 0 0 0; 1 0 0 0 1 0; 1 1 0 0 0 1; 0 1 0 1 1 0])
-# path = "/media/storage/1000_genomes/GRCh38/variants/chr20/yri.chr20.GRCh38.vcf"
-# H = convert_ht(Int8, path)
+# H =  Array{Int8, 2}([0 1 0 1 0 1; 1 1 0 0 0 1; 1 1 1 1 1 1; 0 1 1 1 1 0; 0 0 0 0 0 0; 1 0 0 0 1 0; 1 1 0 0 0 1; 0 1 0 1 1 0])
+# H =  Array{Int8, 2}([1 0 0 0; 0 0 1 0; 0 0 1 0; 1 0 1 0])
+path = "/media/storage/1000_genomes/GRCh38/variants/chr20/yri.chr20.GRCh38.vcf"
+H = convert_ht(Int8, path)
 
 ppa, div = build_prefix_and_divergence_arrays(H)
 reverse_ppa = build_reverse_prefix_array(ppa)
 segments = build_segments(div, reverse_ppa)
 
-segments[2]
+
+H
+for i in 1:length(segments)
+    segment = segments[i]
+    println(segment, " ", H[ppa[segment.sample_end, segment.snp_end + 1], segment.snp_start:segment.snp_end])
+end
