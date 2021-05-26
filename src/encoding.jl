@@ -66,66 +66,105 @@ function build_reverse_prefix_array(ppa::Array{Int32, 2})
     return reverse_ppa
 end
 
-function build_segments(div::Array{Int32, 2}, reverse_ppa::Array{Int32, 2})
+function build_segments(div::Array{Int32, 2}, ppa::Array{Int32, 2}, reverse_ppa::Array{Int32, 2})
     n_samples = size(div, 1)
     n_snps = size(div, 2) - 1
     segments_by_thread = [Vector{Segment{Int32}}() for t in 1:min(Threads.nthreads(), n_snps)]
     Threads.@threads for snp_index in 1:n_snps
         segments = segments_by_thread[Threads.threadid()]
-        last_segment = Segment{Int32}(snp_index, snp_index, convert(Int32, n_snps + 1), convert(Int32, n_snps + 1))
-        split_index = convert(Int32, n_snps + 1)
+        last_segment = Segment{Int32}(snp_index, snp_index, convert(Int32, n_samples + 1), convert(Int32, n_samples + 1))
+        split_index = convert(Int32, n_samples + 1)
         @inbounds for sample_index in n_samples:-1:1
             match_start = div[sample_index, snp_index + 1]
-            if last_segment.snp_start == match_start && last_segment.sample_start < sample_index < last_segment.sample_end
+            if match_start == snp_index
+                continue
+            elseif last_segment.snp_start == match_start && last_segment.sample_start < sample_index < last_segment.sample_end
                 continue
             elseif match_start == snp_index + 1
-                if length(segments) == 0
-                    segment = Segment{Int32}(snp_index, snp_index, convert(Int32, sample_index), convert(Int32, sample_index))
-                    push!(segments, segment)
-                    last_segment = segment
-                else
-                    for segment_index in length(segments):-1:1
-                        segment = segments[segment_index]
-                        if segment.sample_start < split_index && segment.snp_start == snp_index
-                            break
-                        elseif segment.sample_start >= split_index || segment_index == 1
-                            segment = Segment{Int32}(snp_index, snp_index, convert(Int32, sample_index), convert(Int32, sample_index))
-                            push!(segments, segment)
-                            last_segment = segment
-                            break
-                        end
-                    end
-                end
+                segment = Segment{Int32}(snp_index, snp_index, convert(Int32, sample_index), convert(Int32, split_index - 1))
+                push!(segments, segment)
+                last_segment = segment
                 split_index = sample_index
             elseif snp_index == n_snps || match_start != div[reverse_ppa[ppa[sample_index, snp_index + 1], snp_index + 2], snp_index + 2]
-                for sample_start in sample_index-1:-1:1
-                    if match_start < div[sample_start, snp_index + 1]
-                        segment = Segment{Int32}(match_start, snp_index, convert(Int32, sample_start), convert(Int32, sample_index))
-                        push!(segments, segment)
-                        last_segment = segment
+                sample_start = sample_index
+                sample_end = n_samples
+                for neighbor_index in sample_index-1:-1:1
+                    if match_start < div[neighbor_index, snp_index + 1]
+                        sample_start = neighbor_index
                         break
                     end
                 end
+                for neighbor_index in sample_index+1:n_samples
+                    if match_start < div[neighbor_index, snp_index + 1]
+                        sample_end = neighbor_index - 1
+                        break
+                    end
+                end
+                segment = Segment{Int32}(match_start, snp_index, convert(Int32, sample_start), convert(Int32, sample_end))
+                push!(segments, segment)
+                last_segment = segment
             end
         end
     end
     return cat(segments_by_thread..., dims=1)
 end
 
+function build_segment_overlaps(segments::Vector{Segment{Int32}}, ppa::Array{Int32, 2})
+    n_segments = length(segments)
+    n_snps = size(ppa, 2) - 1
+    segment_index_by_snp = [Vector{Int32}() for snp_index in 1:n_snps]
+    segment_overlaps = [Vector{Int32}() for segment_index in 1:n_segments]
+    for segment_index in 1:n_segments
+        segment = segments[segment_index]
+        for snp_index in segment.snp_start:segment.snp_end
+            push!(segment_index_by_snp[snp_index], segment_index)
+        end
+    end
+    Threads.@threads for segment_index in 1:n_segments
+        segment = segments[segment_index]
+        candidate_overlap_set = Set{Int32}()
+        original_form_sample_indices = Vector{Int32}()
+        @inbounds for sample_index in segment.sample_start:segment.sample_end
+            push!(original_form_sample_indices, ppa[sample_index, segment.snp_end + 1])
+        end
+        @inbounds for snp_index in segment.snp_start:segment.snp_end
+            for candidate_index in segment_index_by_snp[snp_index]
+                if segment_index == candidate_index || in(candidate_index, candidate_overlap_set)
+                    continue
+                end
+                push!(candidate_overlap_set, candidate_index)
+                candidate_segment = segments[candidate_index]
+                for sample_index in candidate_segment.sample_start:candidate_segment.sample_end
+                    if in(ppa[sample_index, candidate_segment.snp_end + 1], original_form_sample_indices)
+                        push!(segment_overlaps[segment_index], candidate_index)
+                        break
+                    end
+                end
+            end
+        end
+    end
+    return segment_overlaps
+end
+
+
 using BenchmarkTools
 
-# H =  Array{Int8, 2}([0 1 0 1 0 1; 1 1 0 0 0 1; 1 1 1 1 1 1; 0 1 1 1 1 0; 0 0 0 0 0 0; 1 0 0 0 1 0; 1 1 0 0 0 1; 0 1 0 1 1 0])
+H =  Array{Int8, 2}([0 1 0 1 0 1; 1 1 0 0 0 1; 1 1 1 1 1 1; 0 1 1 1 1 0; 0 0 0 0 0 0; 1 0 0 0 1 0; 1 1 0 0 0 1; 0 1 0 1 1 0])
 # H =  Array{Int8, 2}([1 0 0 0; 0 0 1 0; 0 0 1 0; 1 0 1 0])
 path = "/media/storage/1000_genomes/GRCh38/variants/chr20/yri.chr20.GRCh38.vcf"
 H = convert_ht(Int8, path)
 
 ppa, div = build_prefix_and_divergence_arrays(H)
 reverse_ppa = build_reverse_prefix_array(ppa)
-segments = build_segments(div, reverse_ppa)
+segments = build_segments(div, ppa, reverse_ppa)
+segment_overlaps = build_segment_overlaps(segments, ppa)
 
-
-H
-for i in 1:length(segments)
-    segment = segments[i]
-    println(segment, " ", H[ppa[segment.sample_end, segment.snp_end + 1], segment.snp_start:segment.snp_end])
+segment_index = 15
+segment = segments[segment_index]
+H[ppa[:, segment.snp_end + 1], :]
+for segment_index in segment_overlaps[segment_index]
+    segment = segments[segment_index]
+    println(segment)
+    println(H[ppa[:, segment.snp_end + 1], 1:segment.snp_end])
 end
+
