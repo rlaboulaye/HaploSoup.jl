@@ -1,6 +1,13 @@
 using VCFTools
 
 
+struct Segment{T}
+    snp_start::T
+    snp_end::T
+    sample_start::T
+    sample_end::T
+end
+
 """
     build_prefix_and_divergence_arrays(H::Array{Int8, 2})
 
@@ -46,13 +53,6 @@ function build_prefix_and_divergence_arrays(H::Array{Int8, 2})
         end
     end
     return ppa, div
-end
-
-struct Segment{T}
-    snp_start::T
-    snp_end::T
-    sample_start::T
-    sample_end::T
 end
 
 function build_reverse_prefix_array(ppa::Array{Int32, 2})
