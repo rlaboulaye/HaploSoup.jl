@@ -254,7 +254,6 @@ function build_encoding(H::Array{Int8, 2})
     return build_encoding(H, length(H))
 end
 
-using BenchmarkTools
 
 H =  Array{Int8, 2}([0 1 0 1 0 1; 1 1 0 0 0 1; 1 1 1 1 1 1; 0 1 1 1 1 0; 0 0 0 0 0 0; 1 0 0 0 1 0; 1 1 0 0 0 1; 0 1 0 1 1 0])
 # H =  Array{Int8, 2}([1 0 0 0; 0 0 1 0; 0 0 1 0; 1 0 1 0])
