@@ -202,11 +202,21 @@ function build_encoding(H::Array{Int8, 2}, max_size::Int)
         update_scores!(scores, coverage, ppa, segments, update_indices)
         score, segment_index = top_with_handle(scores)
     end
-    return encoding
+    return encoding, ppa
 end
 
 function build_encoding(H::Array{Int8, 2})
     return build_encoding(H, length(H))
+end
+
+function build_encoding_haplotypes(H::Array{Int8, 2}, ppa::Array{Int32, 2}, encoding::Vector{Segment{Int32}})
+    n_segments = length(encoding)
+    encoding_haplotypes = Vector{Vector{Int8}}(undef, n_segments)
+    Threads.@threads for segment_index in 1:n_segments
+        @inbounds segment = encoding[segment_index]
+        @inbounds encoding_haplotypes[segment_index] = H[ppa[segment.sample_start, segment.snp_end + 1], segment.snp_start:segment.snp_end]
+    end
+    return encoding_haplotypes
 end
 
 using BenchmarkTools
@@ -215,8 +225,11 @@ H =  Array{Int8, 2}([0 1 0 1 0 1; 1 1 0 0 0 1; 1 1 1 1 1 1; 0 1 1 1 1 0; 0 0 0 0
 # H =  Array{Int8, 2}([1 0 0 0; 0 0 1 0; 0 0 1 0; 1 0 1 0])
 path = "/media/storage/1000_genomes/GRCh38/variants/chr20/yri.chr20.GRCh38.vcf"
 H = convert_ht(Int8, path)
-@time encoding = build_encoding(H)
-ppa, div = build_prefix_and_divergence_arrays(H)
+H = H[:, 1:100000]
+@time encoding, ppa = build_encoding(H)
+@time encoding_haplotypes = build_encoding_haplotypes(H, ppa, encoding)
+
+
 for segment in encoding
     println(segment)
     println(H[ppa[segment.sample_start:segment.sample_end, segment.snp_end + 1], 1:segment.snp_end])
