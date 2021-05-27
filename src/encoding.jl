@@ -146,6 +146,27 @@ function build_segment_overlaps(segments::Vector{Segment{Int32}}, ppa::Array{Int
     return segment_overlaps
 end
 
+function calculate_scores(coverage::Array{Int8, 2}, segments::Vector{Segment{Int32}}, ppa::Array{Int32, 2}, indices::Vector{Int})
+    scores = Vector{Int32}(undef, length(indices))
+    for (score_index, segment_index) in enumerate(indices)
+        segment = segments[segment_index]
+        original_form_sample_indices = [ppa[sample_index, segment.snp_end + 1] for sample_index in segment.sample_start:segment.sample_end]
+        score = zero(Int32)
+        for snp_index in segment.snp_start:segment.snp_end
+            for original_form_sample_index in original_form_sample_indices
+                score += coverage[original_form_sample_index, snp_index]
+            end
+        end
+        scores[score_index] = score
+    end
+    return scores
+end
+
+function calculate_scores(coverage::Array{Int8, 2}, segments::Vector{Segment{Int32}}, ppa::Array{Int32, 2})
+    indices = range(1, length(segments), step=1) |> collect
+    return calculate_scores(coverage, segments, ppa, indices)
+end
+
 
 using BenchmarkTools
 
@@ -158,6 +179,9 @@ ppa, div = build_prefix_and_divergence_arrays(H)
 reverse_ppa = build_reverse_prefix_array(ppa)
 segments = build_segments(div, ppa, reverse_ppa)
 segment_overlaps = build_segment_overlaps(segments, ppa)
+coverage = ones(Int8, size(H, 1), size(H, 2))
+
+@time calculate_scores(coverage, segments, ppa)
 
 segment_index = 15
 segment = segments[segment_index]
@@ -167,4 +191,3 @@ for segment_index in segment_overlaps[segment_index]
     println(segment)
     println(H[ppa[:, segment.snp_end + 1], 1:segment.snp_end])
 end
-
