@@ -1,3 +1,4 @@
+using DataStructures
 using VCFTools
 
 
@@ -129,7 +130,8 @@ function build_segment_overlaps(segments::Vector{Segment{Int32}}, ppa::Array{Int
         end
         @inbounds for snp_index in segment.snp_start:segment.snp_end
             for candidate_index in segment_index_by_snp[snp_index]
-                if segment_index == candidate_index || in(candidate_index, candidate_overlap_set)
+                # if segment_index == candidate_index || in(candidate_index, candidate_overlap_set)
+                if in(candidate_index, candidate_overlap_set)
                     continue
                 end
                 push!(candidate_overlap_set, candidate_index)
@@ -146,27 +148,66 @@ function build_segment_overlaps(segments::Vector{Segment{Int32}}, ppa::Array{Int
     return segment_overlaps
 end
 
-function calculate_scores(coverage::Array{Int8, 2}, segments::Vector{Segment{Int32}}, ppa::Array{Int32, 2}, indices::Vector{Int})
+function calculate_scores(coverage::Array{Int8, 2}, ppa::Array{Int32, 2}, segments::Vector{Segment{Int32}}, indices::Vector{Int32})
     scores = Vector{Int32}(undef, length(indices))
-    for (score_index, segment_index) in enumerate(indices)
+    Threads.@threads for (score_index, segment_index) in collect(enumerate(indices))
         segment = segments[segment_index]
-        original_form_sample_indices = [ppa[sample_index, segment.snp_end + 1] for sample_index in segment.sample_start:segment.sample_end]
+        @inbounds original_form_sample_indices = [ppa[sample_index, segment.snp_end + 1] for sample_index in segment.sample_start:segment.sample_end]
         score = zero(Int32)
         for snp_index in segment.snp_start:segment.snp_end
             for original_form_sample_index in original_form_sample_indices
-                score += coverage[original_form_sample_index, snp_index]
+                @inbounds score += coverage[original_form_sample_index, snp_index]
             end
         end
-        scores[score_index] = score
+        @inbounds scores[score_index] = score
     end
     return scores
 end
 
-function calculate_scores(coverage::Array{Int8, 2}, segments::Vector{Segment{Int32}}, ppa::Array{Int32, 2})
-    indices = range(1, length(segments), step=1) |> collect
-    return calculate_scores(coverage, segments, ppa, indices)
+function calculate_scores(coverage::Array{Int8, 2}, ppa::Array{Int32, 2}, segments::Vector{Segment{Int32}})
+    indices = convert(Vector{Int32}, 1:length(segments) |> collect)
+    return calculate_scores(coverage, ppa, segments, indices)
 end
 
+function update_coverage!(coverage::Array{Int8, 2}, ppa::Array{Int32, 2}, segments::Vector{Segment{Int32}}, segment_index::Int)
+    segment = segments[segment_index]
+    original_form_sample_indices = [ppa[sample_index, segment.snp_end + 1] for sample_index in segment.sample_start:segment.sample_end]
+    for snp_index in segment.snp_start:segment.snp_end
+        for original_form_sample_index in original_form_sample_indices
+            @inbounds coverage[original_form_sample_index, snp_index] = 0
+        end
+    end
+end
+
+function update_scores!(scores::MutableBinaryMaxHeap{Int32}, coverage::Array{Int8, 2}, ppa::Array{Int32, 2}, segments::Vector{Segment{Int32}}, indices::Vector{Int32})
+    updated_scores = calculate_scores(coverage, ppa, segments, indices)
+    for (segment_index, score) in zip(indices, updated_scores)
+        update!(scores, convert(Int, segment_index), score)
+    end
+end
+
+function build_encoding(H::Array{Int8, 2}, max_size::Int)
+    encoding = Vector{Segment{Int32}}(undef, 0)
+    ppa, div = build_prefix_and_divergence_arrays(H)
+    reverse_ppa = build_reverse_prefix_array(ppa)
+    segments = build_segments(div, ppa, reverse_ppa)
+    segment_overlaps = build_segment_overlaps(segments, ppa)
+    coverage = ones(Int8, size(H, 1), size(H, 2))
+    scores = MutableBinaryMaxHeap{Int32}(calculate_scores(coverage, ppa, segments))
+    score, segment_index = top_with_handle(scores)
+    while score > 0 && length(encoding) < max_size
+        push!(encoding, segments[segment_index])
+        update_coverage!(coverage, ppa, segments, segment_index)
+        update_indices = [index for index in segment_overlaps[segment_index] if scores[convert(Int, index)] > 0]
+        update_scores!(scores, coverage, ppa, segments, update_indices)
+        score, segment_index = top_with_handle(scores)
+    end
+    return encoding
+end
+
+function build_encoding(H::Array{Int8, 2})
+    return build_encoding(H, length(H))
+end
 
 using BenchmarkTools
 
@@ -174,14 +215,20 @@ H =  Array{Int8, 2}([0 1 0 1 0 1; 1 1 0 0 0 1; 1 1 1 1 1 1; 0 1 1 1 1 0; 0 0 0 0
 # H =  Array{Int8, 2}([1 0 0 0; 0 0 1 0; 0 0 1 0; 1 0 1 0])
 path = "/media/storage/1000_genomes/GRCh38/variants/chr20/yri.chr20.GRCh38.vcf"
 H = convert_ht(Int8, path)
+@time encoding = build_encoding(H)
+ppa, div = build_prefix_and_divergence_arrays(H)
+for segment in encoding
+    println(segment)
+    println(H[ppa[segment.sample_start:segment.sample_end, segment.snp_end + 1], 1:segment.snp_end])
+end
+
 
 ppa, div = build_prefix_and_divergence_arrays(H)
 reverse_ppa = build_reverse_prefix_array(ppa)
 segments = build_segments(div, ppa, reverse_ppa)
 segment_overlaps = build_segment_overlaps(segments, ppa)
 coverage = ones(Int8, size(H, 1), size(H, 2))
-
-@time calculate_scores(coverage, segments, ppa)
+scores = MutableBinaryMaxHeap{Int32}(calculate_scores(coverage, ppa, segments))
 
 segment_index = 15
 segment = segments[segment_index]
@@ -191,3 +238,4 @@ for segment_index in segment_overlaps[segment_index]
     println(segment)
     println(H[ppa[:, segment.snp_end + 1], 1:segment.snp_end])
 end
+
