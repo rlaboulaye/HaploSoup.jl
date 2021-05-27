@@ -2,8 +2,10 @@ module HaploSoup
 
 
 export build_prefix_and_divergence_arrays
+export build_encoding
+encode_haplotype_matrix
 
 
-include("algorithms.jl")
+include("encoding.jl")
 
 end
