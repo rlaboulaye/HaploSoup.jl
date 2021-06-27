@@ -1,4 +1,6 @@
 using DataStructures
+using NPZ
+using Statistics
 using VCFTools
 
 
@@ -258,9 +260,18 @@ end
 H =  Array{Int8, 2}([0 1 0 1 0 1; 1 1 0 0 0 1; 1 1 1 1 1 1; 0 1 1 1 1 0; 0 0 0 0 0 0; 1 0 0 0 1 0; 1 1 0 0 0 1; 0 1 0 1 1 0])
 # H =  Array{Int8, 2}([1 0 0 0; 0 0 1 0; 0 0 1 0; 1 0 1 0])
 path = "/media/storage/1000_genomes/GRCh38/variants/chr20/yri.chr20.GRCh38.vcf"
+path = "/media/storage/1000_genomes/GRCh38/variants/chr10/LATINO.chr10.phase3_shapeit2_mvncall_integrated_v5a.20130502.genotypes.biallelic.vcf.gz"
+path = "/home/rlaboulaye/Work/projects/genome-retrieval/admixed_american_2.vcf"
+path = "/home/rlaboulaye/Work/projects/genome-retrieval/ashkenazi.vcf"
 H = convert_ht(Int8, path)
-H = H[:, 1:100000]
-encoding_positions, encoding_haplotypes, H_encoded = build_encoding(H)
+# filter out maf <= 1%
+H = H[:, Statistics.mean(H, dims=1)[1, :] .> .01]
+@time encoding_positions, encoding_haplotypes, H_encoded = build_encoding(H)
+npzwrite("ashkenazi.chr10.haplosoup.npy", H_encoded)
+npzwrite("ashkenazi.chr10.encoding_positions.npy", encoding_positions)
+
+size(encoding_positions)
+
 
 ppa, div = build_prefix_and_divergence_arrays(H)
 reverse_ppa = build_reverse_prefix_array(ppa)
