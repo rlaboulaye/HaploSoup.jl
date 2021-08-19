@@ -8,4 +8,5 @@ NPZ = "15e1cf62-19b3-5cfa-8e77-841668bca605"
 VCFTools = "a620830f-fdd7-5ebc-8d26-3621ab35fbfe"
 
 [compat]
+VCFTools = "0.2"
 julia = "1.6"
